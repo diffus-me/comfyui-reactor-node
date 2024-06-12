@@ -8,6 +8,9 @@ from PIL import Image
 
 import insightface
 from insightface.app.common import Face
+
+import execution_context
+
 try:
     import torch.cuda as cuda
 except:
@@ -189,6 +192,7 @@ def get_face_single(img_data: np.ndarray, face, face_index=0, det_size=(640, 640
 
 
 def swap_face(
+    context: execution_context.ExecutionContext,
     source_img: Union[Image.Image, None],
     target_img: Image.Image,
     model: Union[str, None] = None,
@@ -321,7 +325,7 @@ def swap_face(
                             if face_boost_enabled:
                                 logger.status(f"Face Boost is enabled")
                                 bgr_fake, M = face_swapper.get(result, target_face, source_face, paste_back=False)
-                                bgr_fake, scale = restorer.get_restored_face(bgr_fake, face_restore_model, face_restore_visibility, codeformer_weight, interpolation)
+                                bgr_fake, scale = restorer.get_restored_face(context, bgr_fake, face_restore_model, face_restore_visibility, codeformer_weight, interpolation)
                                 M *= scale
                                 result = swapper.in_swap(target_img, bgr_fake, M)
                             else:
@@ -357,6 +361,7 @@ def swap_face(
     return result_image
 
 def swap_face_many(
+    context: execution_context.ExecutionContext,
     source_img: Union[Image.Image, None],
     target_imgs: List[Image.Image],
     model: Union[str, None] = None,
@@ -514,7 +519,7 @@ def swap_face_many(
                                 if face_boost_enabled:
                                     logger.status(f"Face Boost is enabled")
                                     bgr_fake, M = face_swapper.get(target_img, target_face_single, source_face, paste_back=False)
-                                    bgr_fake, scale = restorer.get_restored_face(bgr_fake, face_restore_model, face_restore_visibility, codeformer_weight, interpolation)
+                                    bgr_fake, scale = restorer.get_restored_face(context, bgr_fake, face_restore_model, face_restore_visibility, codeformer_weight, interpolation)
                                     M *= scale
                                     result = swapper.in_swap(target_img, bgr_fake, M)
                                 else:

@@ -19,6 +19,8 @@ from scripts.reactor_swapper import (
     half_det_size,
     providers
 )
+
+import execution_context
 import folder_paths
 import comfy.model_management as model_management
 
@@ -34,6 +36,7 @@ class FaceSwapScript(scripts.Script):
 
     def process(
         self,
+        context: execution_context.ExecutionContext,
         p: StableDiffusionProcessing,
         img,
         enable,
@@ -54,7 +57,7 @@ class FaceSwapScript(scripts.Script):
     ):
         self.enable = enable
         if self.enable:
-
+            self.context = context
             self.source = img    
             self.swap_in_generated = swap_in_generated
             self.gender_source = gender_source
@@ -99,6 +102,7 @@ class FaceSwapScript(scripts.Script):
                 if len(p.init_images) == 1:
 
                     result = swap_face(
+                        self.context,
                         self.source,
                         p.init_images[0],
                         source_faces_index=self.source_faces_index,
@@ -136,6 +140,7 @@ class FaceSwapScript(scripts.Script):
 
                 elif len(p.init_images) > 1:
                     result = swap_face_many(
+                        self.context,
                         self.source,
                         p.init_images,
                         source_faces_index=self.source_faces_index,
@@ -167,6 +172,7 @@ class FaceSwapScript(scripts.Script):
                 logger.status(f"Working: source face index %s, target face index %s", self.source_faces_index, self.faces_index)
                 image: Image.Image = script_pp.image
                 result = swap_face(
+                    self.context,
                     self.source,
                     image,
                     source_faces_index=self.source_faces_index,

@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from torchvision.transforms.functional import normalize
 
+import execution_context
+
 try:
     import torch.cuda as cuda
 except:
@@ -34,7 +36,8 @@ else:
     providers = ["CPUExecutionProvider"]
 
 
-def get_restored_face(cropped_face,
+def get_restored_face(context: execution_context.ExecutionContext,
+                      cropped_face,
                       face_restore_model,
                       face_restore_visibility,
                       codeformer_weight,
@@ -65,7 +68,7 @@ def get_restored_face(cropped_face,
     # and detail preservation. Nearest is predictably unusable, Linear produces too much aliasing, and Lanczos produces
     # too many hallucinations and artifacts/fringing.
 
-    model_path = folder_paths.get_full_path("facerestore_models", face_restore_model)
+    model_path = folder_paths.get_full_path(context, "facerestore_models", face_restore_model)
     device = model_management.get_torch_device()
 
     cropped_face_t = img2tensor(cropped_face / 255., bgr2rgb=True, float32=True)

@@ -15,6 +15,7 @@ from scipy import stats
 from insightface.app.common import Face
 from segment_anything import sam_model_registry
 
+import execution_context
 from modules.processing import StableDiffusionProcessingImg2Img
 from modules.shared import state
 # from comfy_extras.chainner_models import model_loading
@@ -145,7 +146,7 @@ class reactor:
                 "face_model": ("FACE_MODEL",),
                 "face_boost": ("FACE_BOOST",),
             },
-            "hidden": {"faces_order": "FACES_ORDER"},
+            "hidden": {"faces_order": "FACES_ORDER", "context": "EXECUTION_CONTEXT"},
         }
 
     RETURN_TYPES = ("IMAGE","FACE_MODEL")
@@ -165,6 +166,7 @@ class reactor:
 
     def restore_face(
             self,
+            context: execution_context.ExecutionContext,
             input_image,
             face_restore_model,
             face_restore_visibility,
@@ -179,7 +181,7 @@ class reactor:
             global FACE_SIZE, FACE_HELPER
 
             self.face_helper = FACE_HELPER
-            
+
             faceSize = 512
             if "1024" in face_restore_model.lower():
                 faceSize = 1024
@@ -188,7 +190,7 @@ class reactor:
 
             logger.status(f"Restoring with {face_restore_model} | Face Size is set to {faceSize}")
 
-            model_path = folder_paths.get_full_path("facerestore_models", face_restore_model)
+            model_path = folder_paths.get_full_path(context, "facerestore_models", face_restore_model)
 
             device = model_management.get_torch_device()
 
@@ -313,8 +315,8 @@ class reactor:
             result = restored_img_tensor
 
         return result
-    
-    def execute(self, enabled, input_image, swap_model, detect_gender_source, detect_gender_input, source_faces_index, input_faces_index, console_log_level, face_restore_model,face_restore_visibility, codeformer_weight, facedetection, source_image=None, face_model=None, faces_order=None, face_boost=None):
+
+    def execute(self, enabled, input_image, swap_model, detect_gender_source, detect_gender_input, source_faces_index, input_faces_index, console_log_level, face_restore_model,face_restore_visibility, codeformer_weight, facedetection, source_image=None, face_model=None, faces_order=None, face_boost=None, context:execution_context.ExecutionContext = None):
 
         if face_boost is not None:
             self.face_boost_enabled = face_boost["enabled"]
@@ -348,6 +350,7 @@ class reactor:
             source = None
         p = StableDiffusionProcessingImg2Img(pil_images)
         script.process(
+            context=context,
             p=p,
             img=source,
             enable=True,
@@ -376,7 +379,7 @@ class reactor:
             face_model_to_provide = face_model
 
         if self.restore or not self.face_boost_enabled:
-            result = reactor.restore_face(self,result,face_restore_model,face_restore_visibility,codeformer_weight,facedetection)
+            result = reactor.restore_face(self, context, result,face_restore_model,face_restore_visibility,codeformer_weight,facedetection)
 
         return (result,face_model_to_provide)
 
@@ -399,7 +402,10 @@ class ReActorPlusOpt:
                 "face_model": ("FACE_MODEL",),
                 "options": ("OPTIONS",),
                 "face_boost": ("FACE_BOOST",),
-            }
+            },
+            "hidden": {
+                "context": "EXECUTION_CONTEXT"
+            },
         }
 
     RETURN_TYPES = ("IMAGE","FACE_MODEL")
@@ -421,8 +427,8 @@ class ReActorPlusOpt:
         self.interpolation = "Bicubic"
         self.boost_model_visibility = 1
         self.boost_cf_weight = 0.5
-    
-    def execute(self, enabled, input_image, swap_model, facedetection, face_restore_model, face_restore_visibility, codeformer_weight, source_image=None, face_model=None, options=None, face_boost=None):
+
+    def execute(self, enabled, input_image, swap_model, facedetection, face_restore_model, face_restore_visibility, codeformer_weight, source_image=None, face_model=None, options=None, face_boost=None, context: execution_context.ExecutionContext = None):
 
         if options is not None:
             self.faces_order = [options["input_faces_order"], options["source_faces_order"]]
@@ -437,9 +443,9 @@ class ReActorPlusOpt:
             self.restore = face_boost["restore_with_main_after"]
         else:
             self.face_boost_enabled = False
-        
+
         result = reactor.execute(
-            self,enabled,input_image,swap_model,self.detect_gender_source,self.detect_gender_input,self.source_faces_index,self.input_faces_index,self.console_log_level,face_restore_model,face_restore_visibility,codeformer_weight,facedetection,source_image,face_model,self.faces_order, face_boost=face_boost
+            self,enabled,input_image,swap_model,self.detect_gender_source,self.detect_gender_input,self.source_faces_index,self.input_faces_index,self.console_log_level,face_restore_model,face_restore_visibility,codeformer_weight,facedetection,source_image,face_model,self.faces_order, face_boost=face_boost, context=context
         )
 
         return result
@@ -660,6 +666,9 @@ class RestoreFace:
                 "visibility": ("FLOAT", {"default": 1, "min": 0.0, "max": 1, "step": 0.05}),
                 "codeformer_weight": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1, "step": 0.05}),
             },
+            "hidden": {
+                "context": "EXECUTION_CONTEXT"
+            },
         }
 
     RETURN_TYPES = ("IMAGE",)
@@ -670,8 +679,8 @@ class RestoreFace:
     #     self.face_helper = None
     #     self.face_size = 512
 
-    def execute(self, image, model, visibility, codeformer_weight, facedetection):
-        result = reactor.restore_face(self,image,model,visibility,codeformer_weight,facedetection)
+    def execute(self, image, model, visibility, codeformer_weight, facedetection, context: execution_context.ExecutionContext):
+        result = reactor.restore_face(self, context, image,model,visibility,codeformer_weight,facedetection)
         return (result,)
 
 
@@ -695,10 +704,10 @@ class MaskHelper:
         # self.resize_behavior = "source_size"
     
     @classmethod
-    def INPUT_TYPES(s):
-        bboxs = ["bbox/"+x for x in folder_paths.get_filename_list("ultralytics_bbox")]
-        segms = ["segm/"+x for x in folder_paths.get_filename_list("ultralytics_segm")]
-        sam_models = [x for x in folder_paths.get_filename_list("sams") if 'hq' not in x]
+    def INPUT_TYPES(s, context: execution_context.ExecutionContext):
+        bboxs = ["bbox/"+x for x in folder_paths.get_filename_list(context, "ultralytics_bbox")]
+        segms = ["segm/"+x for x in folder_paths.get_filename_list(context, "ultralytics_segm")]
+        sam_models = [x for x in folder_paths.get_filename_list(context, "sams") if 'hq' not in x]
         return {
             "required": {
                 "image": ("IMAGE",),
@@ -721,6 +730,9 @@ class MaskHelper:
             },
             "optional": {
                 "mask_optional": ("MASK",),
+            },
+            "hidden": {
+                "context": "EXECUTION_CONTEXT"
             }
         }
     
@@ -729,7 +741,7 @@ class MaskHelper:
     FUNCTION = "execute"
     CATEGORY = "🌌 ReActor"
 
-    def execute(self, image, swapped_image, bbox_model_name, bbox_threshold, bbox_dilation, bbox_crop_factor, bbox_drop_size, sam_model_name, sam_dilation, sam_threshold, bbox_expansion, mask_hint_threshold, mask_hint_use_negative, morphology_operation, morphology_distance, blur_radius, sigma_factor, mask_optional=None):
+    def execute(self, image, swapped_image, bbox_model_name, bbox_threshold, bbox_dilation, bbox_crop_factor, bbox_drop_size, sam_model_name, sam_dilation, sam_threshold, bbox_expansion, mask_hint_threshold, mask_hint_use_negative, morphology_operation, morphology_distance, blur_radius, sigma_factor, mask_optional=None, context: execution_context.ExecutionContext = None):
 
         # images = [image[i:i + 1, ...] for i in range(image.shape[0])]
 
@@ -737,7 +749,7 @@ class MaskHelper:
 
         if mask_optional is None:
 
-            bbox_model_path = folder_paths.get_full_path("ultralytics", bbox_model_name)
+            bbox_model_path = folder_paths.get_full_path(context, "ultralytics", bbox_model_name)
             bbox_model = subcore.load_yolo(bbox_model_path)
             bbox_detector = subcore.UltraBBoxDetector(bbox_model)
 
@@ -752,7 +764,7 @@ class MaskHelper:
                     segs, _ = masking_segs.filter(segs, self.labels)
             # segs, _ = masking_segs.filter(segs, "all")
             
-            sam_modelname = folder_paths.get_full_path("sams", sam_model_name)
+            sam_modelname = folder_paths.get_full_path(context, "sams", sam_model_name)
 
             if 'vit_h' in sam_model_name:
                 model_kind = 'vit_h'
@@ -1176,7 +1188,7 @@ class ReActorFaceBoost:
             "restore_with_main_after": restore_with_main_after,
         }
         return (face_boost, )
-    
+
 
 NODE_CLASS_MAPPINGS = {
     # --- MAIN NODES ---
